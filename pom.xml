@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.4.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.whisperinggarden</groupId>
+    <artifactId>liquibase-auto-rollback</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <name>liquibase-auto-rollback</name>
+    <description>A helper library that automatically rolls back Liquibase changesets.</description>
+    <packaging>jar</packaging>
+    <url>https://github.com/sshushkevich/liquibase-auto-rollback</url>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>sshushkevich</id>
+            <name>Sergei Shushkevich</name>
+            <url>https://github.com/sshushkevich</url>
+            <roles>
+                <role>Developer</role>
+                <role>Maintainer</role>
+            </roles>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:git://github.com/sshushkevich/liquibase-auto-rollback.git</connection>
+        <developerConnection>scm:git:ssh://github.com/sshushkevich/liquibase-auto-rollback.git</developerConnection>
+        <url>https://github.com/sshushkevich/liquibase-auto-rollback</url>
+    </scm>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>META-INF/**</include>
+                </includes>
+            </resource>
+        </resources>
+    </build>
+</project>
