@@ -1,11 +1,13 @@
 package com.whisperinggarden.lar;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration
 @EnableConfigurationProperties(LiquibaseRollbackProperties.class)
+@ConditionalOnProperty(prefix = "spring.liquibase-rollback", name = "enabled", matchIfMissing = true)
 public class LiquibaseRollbackAutoConfiguration {
 
     @Bean
