@@ -5,18 +5,27 @@ import liquibase.change.AddColumnConfig;
 import liquibase.database.Database;
 import liquibase.datatype.DataTypeFactory;
 import liquibase.exception.DatabaseException;
+import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.executor.ExecutorService;
+import liquibase.snapshot.InvalidExampleException;
+import liquibase.snapshot.SnapshotGeneratorFactory;
 import liquibase.statement.AutoIncrementConstraint;
 import liquibase.statement.NotNullConstraint;
 import liquibase.statement.core.CreateIndexStatement;
 import liquibase.statement.core.CreateTableStatement;
 import liquibase.structure.core.Column;
+import liquibase.structure.core.Schema;
+import liquibase.structure.core.Table;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class LiquibaseRollbackUtils {
 
     public static void createRollbackTable(Database database, String tableName) throws DatabaseException {
+        if (hasTable(database, tableName)) {
+            return;
+        }
+
         var executor = Scope.getCurrentScope()
                 .getSingleton(ExecutorService.class)
                 .getExecutor("jdbc", database);
@@ -37,5 +46,16 @@ public class LiquibaseRollbackUtils {
 
         executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGID", null, null, tableName, false, null,
                 new AddColumnConfig(new Column("CHANGELOGID(15)"))));
+    }
+
+    private static boolean hasTable(Database database, String tableName) throws DatabaseException {
+        try {
+            return SnapshotGeneratorFactory.getInstance().has(
+                    new Table().setName(tableName).setSchema(
+                            new Schema(database.getLiquibaseCatalogName(), database.getLiquibaseSchemaName())),
+                    database);
+        } catch (InvalidExampleException e) {
+            throw new UnexpectedLiquibaseException("Unable to verify whether the rollback table exists", e);
+        }
     }
 }
