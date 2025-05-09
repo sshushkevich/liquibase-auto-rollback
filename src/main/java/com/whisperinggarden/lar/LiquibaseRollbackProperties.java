@@ -9,5 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Setter
 public class LiquibaseRollbackProperties {
 
+    private boolean enabled;
+
     private String dbRollbackTableName = "DATABASECHANGELOGRB";
 }
