@@ -45,7 +45,7 @@ public class LiquibaseRollbackUtils {
                 .addColumn("ROLLBACKSTMTORDER", intType, new NotNullConstraint("ROLLBACKSTMTORDER")));
 
         executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGID", null, null, tableName, false, null,
-                new AddColumnConfig(new Column("CHANGELOGID(15)"))));
+                new AddColumnConfig(new Column("CHANGELOGID"))));
     }
 
     private static boolean hasTable(Database database, String tableName) throws DatabaseException {
