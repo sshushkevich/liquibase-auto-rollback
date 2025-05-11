@@ -19,6 +19,7 @@ public class LiquibaseRollbackCustomizer implements Customizer<Liquibase> {
 
         try {
             LiquibaseRollbackUtils.createRollbackTable(liquibase.getDatabase(), properties.getDbRollbackTableName());
+            LiquibaseRollbackUtils.persistRollbackStatements(liquibase, properties.getDbRollbackTableName());
         } catch (DatabaseException e) {
             throw new UnexpectedLiquibaseException(e.getMessage());
         }
