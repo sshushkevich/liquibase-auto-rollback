@@ -34,7 +34,7 @@ public class LiquibaseRollbackUtils {
     public static final String COL_ROLLBACKSTMT = "ROLLBACKSTMT";
     public static final String COL_ROLLBACKSTMTORDER = "ROLLBACKSTMTORDER";
 
-    public static void createRollbackTable(Database database, String tableName) throws DatabaseException {
+    public static void createRollbackTable(Database database, String tableName) {
         if (hasTable(database, tableName)) {
             return;
         }
@@ -50,15 +50,19 @@ public class LiquibaseRollbackUtils {
 
         log.info("Creating {} table", tableName);
 
-        executor.execute(new CreateTableStatement(null, null, tableName)
-                .addPrimaryKeyColumn(COL_ID, intType, null, null, null, new AutoIncrementConstraint(COL_ID))
-                .addColumn(COL_CHANGELOGID, varchar255Type, new NotNullConstraint(COL_CHANGELOGID))
-                .addColumn(COL_MD5SUM, varchar35Type, new NotNullConstraint(COL_MD5SUM))
-                .addColumn(COL_ROLLBACKSTMT, varchar4KType, new NotNullConstraint(COL_ROLLBACKSTMT))
-                .addColumn(COL_ROLLBACKSTMTORDER, intType, new NotNullConstraint(COL_ROLLBACKSTMTORDER)));
+        try {
+            executor.execute(new CreateTableStatement(null, null, tableName)
+                    .addPrimaryKeyColumn(COL_ID, intType, null, null, null, new AutoIncrementConstraint(COL_ID))
+                    .addColumn(COL_CHANGELOGID, varchar255Type, new NotNullConstraint(COL_CHANGELOGID))
+                    .addColumn(COL_MD5SUM, varchar35Type, new NotNullConstraint(COL_MD5SUM))
+                    .addColumn(COL_ROLLBACKSTMT, varchar4KType, new NotNullConstraint(COL_ROLLBACKSTMT))
+                    .addColumn(COL_ROLLBACKSTMTORDER, intType, new NotNullConstraint(COL_ROLLBACKSTMTORDER)));
 
-        executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGID", null, null, tableName, false, null,
-                new AddColumnConfig(new Column(COL_CHANGELOGID))));
+            executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGID", null, null, tableName, false, null,
+                    new AddColumnConfig(new Column(COL_CHANGELOGID))));
+        } catch (DatabaseException e) {
+            throw new UnexpectedLiquibaseException("Unable to create the rollback table", e);
+        }
     }
 
     public static void persistRollbackStatements(Liquibase liquibase, String tableName) {
@@ -95,13 +99,13 @@ public class LiquibaseRollbackUtils {
         }
     }
 
-    private static boolean hasTable(Database database, String tableName) throws DatabaseException {
+    private static boolean hasTable(Database database, String tableName) {
         try {
             return SnapshotGeneratorFactory.getInstance().has(
                     new Table().setName(tableName).setSchema(
                             new Schema(database.getLiquibaseCatalogName(), database.getLiquibaseSchemaName())),
                     database);
-        } catch (InvalidExampleException e) {
+        } catch (InvalidExampleException | DatabaseException e) {
             throw new UnexpectedLiquibaseException("Unable to verify whether the rollback table exists", e);
         }
     }

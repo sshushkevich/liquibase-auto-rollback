@@ -1,11 +1,12 @@
 package com.whisperinggarden.lar;
 
 import liquibase.Liquibase;
-import liquibase.exception.DatabaseException;
-import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.integration.spring.Customizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import static com.whisperinggarden.lar.LiquibaseRollbackUtils.createRollbackTable;
+import static com.whisperinggarden.lar.LiquibaseRollbackUtils.persistRollbackStatements;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -17,12 +18,8 @@ public class LiquibaseRollbackCustomizer implements Customizer<Liquibase> {
     public void customize(Liquibase liquibase) {
         log.info("Starting database auto-rollback processing");
 
-        try {
-            LiquibaseRollbackUtils.createRollbackTable(liquibase.getDatabase(), properties.getDbRollbackTableName());
-            LiquibaseRollbackUtils.persistRollbackStatements(liquibase, properties.getDbRollbackTableName());
-        } catch (DatabaseException e) {
-            throw new UnexpectedLiquibaseException(e.getMessage());
-        }
+        createRollbackTable(liquibase.getDatabase(), properties.getDbRollbackTableName());
+        persistRollbackStatements(liquibase, properties.getDbRollbackTableName());
 
         log.info("Database auto-rollback processing completed successfully");
     }
