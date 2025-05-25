@@ -138,14 +138,18 @@ public class LiquibaseRollbackUtilsTests {
     public void whenUnexpectedChangesetsExist_thenRollbackStatementsAreExecuted() throws SQLException, LiquibaseException {
         var liquibase = createLiquibase();
         liquibase.update();
-        var changeSetId = "ID-123";
-        var changeSetChecksum = "9:76d0caf518233544632705e958b00fd2";
-        var rollbackStmt = "DELETE FROM book WHERE title = 'Book 2'";
+        var changeSetId1 = "ID-01";
+        var changeSetId2 = "ID-02";
+        var changeSetChecksum1 = "9:c7e301964fcdbeb3bc6509e62a018976";
+        var changeSetChecksum2 = "9:76d0caf518233544632705e958b00fd4";
+        var rollbackStmt1 = "DROP TABLE person";
+        var rollbackStmt21 = "ALTER TABLE person RENAME COLUMN full_name TO name";
+        var rollbackStmt22 = "DELETE FROM person WHERE name = 'John Doe'";
         try (var stmt = connection.createStatement()) {
             stmt.executeUpdate("""
                     INSERT INTO %s (ID, AUTHOR, FILENAME, DATEEXECUTED, ORDEREXECUTED, EXECTYPE, MD5SUM)
-                    VALUES ('%s', 'author', 'changes-1.sql', NOW(), 1, 'EXECUTED', '%s')
-                    """.formatted(CHANGELOG_TBL, changeSetId, changeSetChecksum));
+                    VALUES ('%s', 'author', 'db/changelog/test-changelog-2.yaml', NOW(), 2, 'EXECUTED', '%s')
+                    """.formatted(CHANGELOG_TBL, changeSetId2, changeSetChecksum2));
             stmt.executeUpdate("""
                     CREATE TABLE %s (
                         %s INT AUTO_INCREMENT PRIMARY KEY,
@@ -157,48 +161,77 @@ public class LiquibaseRollbackUtilsTests {
                     """.formatted(ROLLBACK_TBL, COL_ID, COL_CHANGELOGID, COL_MD5SUM,
                     COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
             stmt.executeUpdate("""
-                    CREATE TABLE book (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        title VARCHAR(255) NOT NULL
-                    )
+                    INSERT INTO person (name)
+                    VALUES ('Jane Doe'), ('John Doe'), ('Paul Smith')
                     """);
-            stmt.executeUpdate("""
-                    INSERT INTO book (title)
-                    VALUES ('Book 1'), ('Book 2'), ('Book 3')
-                    """);
+            stmt.executeUpdate("ALTER TABLE person RENAME COLUMN name TO full_name");
         }
         try (var stmt = connection.prepareStatement("INSERT INTO %s (%s, %s, %s, %s) VALUES (?, ?, ?, ?)"
                 .formatted(ROLLBACK_TBL, COL_CHANGELOGID, COL_MD5SUM, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
-            stmt.setString(1, changeSetId);
-            stmt.setString(2, changeSetChecksum);
-            stmt.setString(3, rollbackStmt);
+            stmt.setString(1, changeSetId1);
+            stmt.setString(2, changeSetChecksum1);
+            stmt.setString(3, rollbackStmt1);
             stmt.setInt(4, 1);
-            stmt.executeUpdate();
+            stmt.addBatch();
+
+            stmt.setString(1, changeSetId2);
+            stmt.setString(2, changeSetChecksum2);
+            stmt.setString(3, rollbackStmt21);
+            stmt.setInt(4, 1);
+            stmt.addBatch();
+
+            stmt.setString(1, changeSetId2);
+            stmt.setString(2, changeSetChecksum2);
+            stmt.setString(3, rollbackStmt22);
+            stmt.setInt(4, 2);
+            stmt.addBatch();
+
+            stmt.executeBatch();
         }
         connection.commit();
 
         LiquibaseRollbackUtils.rollbackUnexpectedChangeSets(liquibase, ROLLBACK_TBL, CHANGELOG_TBL);
 
         try (var stmt = connection.createStatement()) {
-            var rs = stmt.executeQuery("SELECT COUNT(*) FROM book");
+            var rs = stmt.executeQuery("SELECT COUNT(*) FROM person");
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(2);
 
-            rs = stmt.executeQuery("SELECT title FROM book ORDER BY title");
+            rs = stmt.executeQuery("SELECT name FROM person ORDER BY name");
             rs.next();
-            assertThat(rs.getString(1)).isEqualTo("Book 1");
+            assertThat(rs.getString(1)).isEqualTo("Jane Doe");
             rs.next();
-            assertThat(rs.getString(1)).isEqualTo("Book 3");
+            assertThat(rs.getString(1)).isEqualTo("Paul Smith");
 
             rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE %s = '%s'"
-                    .formatted(ROLLBACK_TBL, COL_CHANGELOGID, changeSetId));
+                    .formatted(ROLLBACK_TBL, COL_CHANGELOGID, changeSetId1));
+            rs.next();
+            assertThat(rs.getInt(1)).isEqualTo(1);
+
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE %s = '%s'"
+                    .formatted(ROLLBACK_TBL, COL_CHANGELOGID, changeSetId2));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(0);
 
             rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE ID = '%s'"
-                    .formatted(CHANGELOG_TBL, changeSetId));
+                    .formatted(CHANGELOG_TBL, changeSetId1));
+            rs.next();
+            assertThat(rs.getInt(1)).isEqualTo(1);
+
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE ID = '%s'"
+                    .formatted(CHANGELOG_TBL, changeSetId2));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(0);
+
+            var columnsRs = stmt.executeQuery("""
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'PERSON'
+                    ORDER BY ORDINAL_POSITION
+            """);
+            assertThat(columnsRs.next()).isTrue();
+            assertThat(columnsRs.next()).isTrue();
+            assertThat(columnsRs.getString("COLUMN_NAME")).isEqualTo("NAME");
         }
     }
 
