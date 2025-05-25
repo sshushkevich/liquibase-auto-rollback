@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import static com.whisperinggarden.lar.LiquibaseRollbackUtils.createRollbackTable;
 import static com.whisperinggarden.lar.LiquibaseRollbackUtils.persistRollbackStatements;
+import static com.whisperinggarden.lar.LiquibaseRollbackUtils.rollbackUnexpectedChangeSets;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -19,6 +20,7 @@ public class LiquibaseRollbackCustomizer implements Customizer<Liquibase> {
         log.info("Starting database auto-rollback processing");
 
         createRollbackTable(liquibase.getDatabase(), properties.getDbRollbackTableName());
+        rollbackUnexpectedChangeSets(liquibase, properties.getDbRollbackTableName(), properties.getDbChangeLogTable());
         persistRollbackStatements(liquibase, properties.getDbRollbackTableName());
 
         log.info("Database auto-rollback processing completed successfully");

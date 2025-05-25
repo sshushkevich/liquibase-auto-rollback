@@ -11,5 +11,7 @@ public class LiquibaseRollbackProperties {
 
     private boolean enabled;
 
+    private String dbChangeLogTable = "DATABASECHANGELOG";
+
     private String dbRollbackTableName = "DATABASECHANGELOGRB";
 }
