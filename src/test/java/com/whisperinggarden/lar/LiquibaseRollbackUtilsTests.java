@@ -15,9 +15,9 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.UUID;
 
-import static com.whisperinggarden.lar.LiquibaseRollbackUtils.COL_CHANGELOGID;
+import static com.whisperinggarden.lar.LiquibaseRollbackUtils.COL_CHANGELOG_CHECKSUM;
+import static com.whisperinggarden.lar.LiquibaseRollbackUtils.COL_CHANGELOG_ID;
 import static com.whisperinggarden.lar.LiquibaseRollbackUtils.COL_ID;
-import static com.whisperinggarden.lar.LiquibaseRollbackUtils.COL_MD5SUM;
 import static com.whisperinggarden.lar.LiquibaseRollbackUtils.COL_ROLLBACKSTMT;
 import static com.whisperinggarden.lar.LiquibaseRollbackUtils.COL_ROLLBACKSTMTORDER;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
@@ -75,7 +75,7 @@ public class LiquibaseRollbackUtilsTests {
             assertThat(columnsRs.getString("IS_NULLABLE")).isEqualTo("NO");
 
             assertThat(columnsRs.next()).isTrue();
-            assertThat(columnsRs.getString("COLUMN_NAME")).isEqualTo("MD5SUM");
+            assertThat(columnsRs.getString("COLUMN_NAME")).isEqualTo("CHANGELOGCHKSUM");
             assertThat(columnsRs.getString("DATA_TYPE")).isEqualTo("CHARACTER VARYING");
             assertThat(columnsRs.getString("IS_NULLABLE")).isEqualTo("NO");
 
@@ -111,11 +111,11 @@ public class LiquibaseRollbackUtilsTests {
                 CREATE TABLE %s (
                     %s INT AUTO_INCREMENT PRIMARY KEY,
                     %s VARCHAR(255) NOT NULL,
-                    %s VARCHAR(35) NOT NULL,
+                    %s VARCHAR(100) NOT NULL,
                     %s VARCHAR(4096) NOT NULL,
                     %s INT NOT NULL
                 );
-            """.formatted(ROLLBACK_TBL, COL_ID, COL_CHANGELOGID, COL_MD5SUM, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
+            """.formatted(ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
         }
 
         LiquibaseRollbackUtils.persistRollbackStatements(createLiquibase(), ROLLBACK_TBL);
@@ -127,7 +127,7 @@ public class LiquibaseRollbackUtilsTests {
 
             assertThat(count).isEqualTo(1);
 
-            rs = stmt.executeQuery("SELECT %s, %s FROM %s".formatted(COL_CHANGELOGID, COL_ROLLBACKSTMT, ROLLBACK_TBL));
+            rs = stmt.executeQuery("SELECT %s, %s FROM %s".formatted(COL_CHANGELOG_ID, COL_ROLLBACKSTMT, ROLLBACK_TBL));
             rs.next();
             assertThat(rs.getString(1)).isEqualTo("ID-01");
             assertThat(rs.getString(2)).isEqualTo("DROP TABLE PUBLIC.person");
@@ -158,7 +158,7 @@ public class LiquibaseRollbackUtilsTests {
                         %s VARCHAR(4096) NOT NULL,
                         %s INT NOT NULL
                     )
-                    """.formatted(ROLLBACK_TBL, COL_ID, COL_CHANGELOGID, COL_MD5SUM,
+                    """.formatted(ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
                     COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
             stmt.executeUpdate("""
                     INSERT INTO person (name)
@@ -167,7 +167,7 @@ public class LiquibaseRollbackUtilsTests {
             stmt.executeUpdate("ALTER TABLE person RENAME COLUMN name TO full_name");
         }
         try (var stmt = connection.prepareStatement("INSERT INTO %s (%s, %s, %s, %s) VALUES (?, ?, ?, ?)"
-                .formatted(ROLLBACK_TBL, COL_CHANGELOGID, COL_MD5SUM, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
+                .formatted(ROLLBACK_TBL, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
             stmt.setString(1, changeSetId1);
             stmt.setString(2, changeSetChecksum1);
             stmt.setString(3, rollbackStmt1);
@@ -204,12 +204,12 @@ public class LiquibaseRollbackUtilsTests {
             assertThat(rs.getString(1)).isEqualTo("Paul Smith");
 
             rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE %s = '%s'"
-                    .formatted(ROLLBACK_TBL, COL_CHANGELOGID, changeSetId1));
+                    .formatted(ROLLBACK_TBL, COL_CHANGELOG_ID, changeSetId1));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(1);
 
             rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE %s = '%s'"
-                    .formatted(ROLLBACK_TBL, COL_CHANGELOGID, changeSetId2));
+                    .formatted(ROLLBACK_TBL, COL_CHANGELOG_ID, changeSetId2));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(0);
 

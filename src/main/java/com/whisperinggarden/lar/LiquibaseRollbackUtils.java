@@ -33,14 +33,16 @@ import java.util.Comparator;
 @Slf4j
 public class LiquibaseRollbackUtils {
 
+    // DATABASECHANGELOGRB table columns:
     public static final String COL_ID = "ID";
-    public static final String COL_CHANGELOGID = "CHANGELOGID";
-    public static final String COL_MD5SUM = "MD5SUM";
+    public static final String COL_CHANGELOG_ID = "CHANGELOGID";
+    public static final String COL_CHANGELOG_CHECKSUM = "CHANGELOGCHKSUM";
     public static final String COL_ROLLBACKSTMT = "ROLLBACKSTMT";
     public static final String COL_ROLLBACKSTMTORDER = "ROLLBACKSTMTORDER";
 
-    public static final String COL_CHANGELOG_ID = "ID";
-    public static final String COL_CHANGELOG_MD5SUM = "MD5SUM";
+    // DATABASECHANGELOG table columns:
+    public static final String COL_DBCHANGELOG_ID = "ID";
+    public static final String COL_DBCHANGELOG_MD5SUM = "MD5SUM";
 
     public static void createRollbackTable(Database database, String tableName) {
         if (hasTable(database, tableName)) {
@@ -53,7 +55,7 @@ public class LiquibaseRollbackUtils {
 
         var intType = DataTypeFactory.getInstance().fromDescription("int", database);
         var varchar255Type = DataTypeFactory.getInstance().fromDescription("varchar(255)", database);
-        var varchar35Type = DataTypeFactory.getInstance().fromDescription("varchar(35)", database);
+        var varchar100Type = DataTypeFactory.getInstance().fromDescription("varchar(100)", database);
         var varchar4KType = DataTypeFactory.getInstance().fromDescription("varchar(4096)", database);
 
         log.info("Creating {} table", tableName);
@@ -61,13 +63,13 @@ public class LiquibaseRollbackUtils {
         try {
             executor.execute(new CreateTableStatement(null, null, tableName)
                     .addPrimaryKeyColumn(COL_ID, intType, null, null, null, new AutoIncrementConstraint(COL_ID))
-                    .addColumn(COL_CHANGELOGID, varchar255Type, new NotNullConstraint(COL_CHANGELOGID))
-                    .addColumn(COL_MD5SUM, varchar35Type, new NotNullConstraint(COL_MD5SUM))
+                    .addColumn(COL_CHANGELOG_ID, varchar255Type, new NotNullConstraint(COL_CHANGELOG_ID))
+                    .addColumn(COL_CHANGELOG_CHECKSUM, varchar100Type, new NotNullConstraint(COL_CHANGELOG_CHECKSUM))
                     .addColumn(COL_ROLLBACKSTMT, varchar4KType, new NotNullConstraint(COL_ROLLBACKSTMT))
                     .addColumn(COL_ROLLBACKSTMTORDER, intType, new NotNullConstraint(COL_ROLLBACKSTMTORDER)));
 
             executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGID", null, null, tableName, false, null,
-                    new AddColumnConfig(new Column(COL_CHANGELOGID))));
+                    new AddColumnConfig(new Column(COL_CHANGELOG_ID))));
         } catch (DatabaseException e) {
             throw new UnexpectedLiquibaseException("Unable to create the rollback table", e);
         }
@@ -90,8 +92,8 @@ public class LiquibaseRollbackUtils {
                             for (var sql : sqlGenerator.generateSql(rollbackChange, liquibase.getDatabase())) {
                                 try {
                                     executor.execute(new InsertStatement(null, null, tableName)
-                                            .addColumnValue(COL_CHANGELOGID, changeSet.getId())
-                                            .addColumnValue(COL_MD5SUM, checksum)
+                                            .addColumnValue(COL_CHANGELOG_ID, changeSet.getId())
+                                            .addColumnValue(COL_CHANGELOG_CHECKSUM, checksum)
                                             .addColumnValue(COL_ROLLBACKSTMT, sql.toSql())
                                             .addColumnValue(COL_ROLLBACKSTMTORDER, stmtOrder++));
                                 } catch (DatabaseException e) {
@@ -127,7 +129,7 @@ public class LiquibaseRollbackUtils {
                             var rows = executor.queryForList(new SelectStatement(db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName)
                                             .addColumnsToSelect(COL_ROLLBACKSTMT)
                                             .setWhere(":name = :value AND :name = :value")
-                                            .addWhereColumnNames(COL_CHANGELOGID, COL_MD5SUM)
+                                            .addWhereColumnNames(COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM)
                                             .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString())
                                             .setOrderBy(COL_ROLLBACKSTMTORDER));
                             if (!rows.isEmpty()) {
@@ -145,16 +147,16 @@ public class LiquibaseRollbackUtils {
                                 executor.execute(new DeleteStatement(db.getLiquibaseCatalogName(),
                                                 db.getLiquibaseSchemaName(), changeLogTableName)
                                         .setWhere(":name = :value AND :name = :value")
-                                        .addWhereColumnName(COL_CHANGELOG_ID)
-                                        .addWhereColumnName(COL_CHANGELOG_MD5SUM)
+                                        .addWhereColumnName(COL_DBCHANGELOG_ID)
+                                        .addWhereColumnName(COL_DBCHANGELOG_MD5SUM)
                                         .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString()));
 
                                 log.info("Deleting rolled back statements for the changeset {}", changeSet.getId());
                                 executor.execute(new DeleteStatement(db.getLiquibaseCatalogName(),
                                                 db.getLiquibaseSchemaName(), tableName)
                                         .setWhere(":name = :value AND :name = :value")
-                                        .addWhereColumnName(COL_CHANGELOGID)
-                                        .addWhereColumnName(COL_MD5SUM)
+                                        .addWhereColumnName(COL_CHANGELOG_ID)
+                                        .addWhereColumnName(COL_CHANGELOG_CHECKSUM)
                                         .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString()));
                             } else {
                                 log.info("There is no rollback statement for changeset {} ({})",
