@@ -46,7 +46,7 @@ public class LiquibaseRollbackUtilsTests {
 
     @Test
     public void whenTableDoesNotExist_thenRollbackTableAndIndexAreCreated() throws Exception {
-        LiquibaseRollbackUtils.createRollbackTable(database, ROLLBACK_TBL);
+        LiquibaseRollbackUtils.createRollbackTable(database, ROLLBACK_TBL, 1024);
 
         try (var stmt = connection.createStatement()) {
             var tableRs = stmt.executeQuery("SELECT * FROM INFORMATION_SCHEMA.TABLES " +
@@ -58,7 +58,7 @@ public class LiquibaseRollbackUtilsTests {
             assertThat(indexRs.next()).isTrue();
 
             var columnsRs = stmt.executeQuery("""
-                            SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+                            SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
                                 FROM INFORMATION_SCHEMA.COLUMNS
                                 WHERE TABLE_NAME = '%s'
                                 ORDER BY ORDINAL_POSITION
@@ -73,16 +73,19 @@ public class LiquibaseRollbackUtilsTests {
             assertThat(columnsRs.getString("COLUMN_NAME")).isEqualTo("CHANGELOGID");
             assertThat(columnsRs.getString("DATA_TYPE")).isEqualTo("CHARACTER VARYING");
             assertThat(columnsRs.getString("IS_NULLABLE")).isEqualTo("NO");
+            assertThat(columnsRs.getString("CHARACTER_MAXIMUM_LENGTH")).isEqualTo("255");
 
             assertThat(columnsRs.next()).isTrue();
             assertThat(columnsRs.getString("COLUMN_NAME")).isEqualTo("CHANGELOGCHKSUM");
             assertThat(columnsRs.getString("DATA_TYPE")).isEqualTo("CHARACTER VARYING");
             assertThat(columnsRs.getString("IS_NULLABLE")).isEqualTo("NO");
+            assertThat(columnsRs.getString("CHARACTER_MAXIMUM_LENGTH")).isEqualTo("100");
 
             assertThat(columnsRs.next()).isTrue();
             assertThat(columnsRs.getString("COLUMN_NAME")).isEqualTo("ROLLBACKSTMT");
             assertThat(columnsRs.getString("DATA_TYPE")).isEqualTo("CHARACTER VARYING");
             assertThat(columnsRs.getString("IS_NULLABLE")).isEqualTo("NO");
+            assertThat(columnsRs.getString("CHARACTER_MAXIMUM_LENGTH")).isEqualTo("1024");
 
             assertThat(columnsRs.next()).isTrue();
             assertThat(columnsRs.getString("COLUMN_NAME")).isEqualTo("ROLLBACKSTMTORDER");
@@ -95,8 +98,8 @@ public class LiquibaseRollbackUtilsTests {
 
     @Test
     public void whenTableAlreadyExists_thenRollbackTableIsNotRecreatedOrDuplicated() throws Exception {
-        LiquibaseRollbackUtils.createRollbackTable(database, ROLLBACK_TBL);
-        LiquibaseRollbackUtils.createRollbackTable(database, ROLLBACK_TBL);
+        LiquibaseRollbackUtils.createRollbackTable(database, ROLLBACK_TBL, 1024);
+        LiquibaseRollbackUtils.createRollbackTable(database, ROLLBACK_TBL, 1024);
 
         try (var stmt = connection.createStatement()) {
             var countRs = stmt.executeQuery("SELECT COUNT(*) FROM " + ROLLBACK_TBL);

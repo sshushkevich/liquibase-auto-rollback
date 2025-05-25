@@ -44,7 +44,7 @@ public class LiquibaseRollbackUtils {
     public static final String COL_DBCHANGELOG_ID = "ID";
     public static final String COL_DBCHANGELOG_MD5SUM = "MD5SUM";
 
-    public static void createRollbackTable(Database database, String tableName) {
+    public static void createRollbackTable(Database database, String tableName, int rollbackStmtMaxLength) {
         if (hasTable(database, tableName)) {
             return;
         }
@@ -56,7 +56,8 @@ public class LiquibaseRollbackUtils {
         var intType = DataTypeFactory.getInstance().fromDescription("int", database);
         var varchar255Type = DataTypeFactory.getInstance().fromDescription("varchar(255)", database);
         var varchar100Type = DataTypeFactory.getInstance().fromDescription("varchar(100)", database);
-        var varchar4KType = DataTypeFactory.getInstance().fromDescription("varchar(4096)", database);
+        var varchar4KType = DataTypeFactory.getInstance()
+                .fromDescription("varchar(%d)".formatted(rollbackStmtMaxLength), database);
 
         log.info("Creating {} table", tableName);
 
