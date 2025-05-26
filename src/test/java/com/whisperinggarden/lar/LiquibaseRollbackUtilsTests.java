@@ -53,9 +53,21 @@ public class LiquibaseRollbackUtilsTests {
                     "WHERE TABLE_NAME = '%s'".formatted(ROLLBACK_TBL));
             assertThat(tableRs.next()).isTrue();
 
-            var indexRs = stmt.executeQuery("SELECT * FROM INFORMATION_SCHEMA.INDEXES " +
-                    "WHERE TABLE_NAME = '%s' AND INDEX_NAME = 'IDX_RB_CHANGELOGID'".formatted(ROLLBACK_TBL));
+            var indexRs = stmt.executeQuery("""
+                    SELECT COLUMN_NAME, IS_UNIQUE
+                    FROM INFORMATION_SCHEMA.INDEX_COLUMNS
+                    WHERE TABLE_NAME = '%s' AND INDEX_NAME = '%s'
+                    ORDER BY ORDINAL_POSITION
+                    """.formatted(ROLLBACK_TBL, "IDX_RB_CHANGELOGIDSUMORD"));
             assertThat(indexRs.next()).isTrue();
+            assertThat(indexRs.getString("COLUMN_NAME")).isEqualTo(COL_CHANGELOG_ID);
+            assertThat(indexRs.getBoolean("IS_UNIQUE")).isEqualTo(true);
+            assertThat(indexRs.next()).isTrue();
+            assertThat(indexRs.getString("COLUMN_NAME")).isEqualTo(COL_CHANGELOG_CHECKSUM);
+            assertThat(indexRs.getBoolean("IS_UNIQUE")).isEqualTo(true);
+            assertThat(indexRs.next()).isTrue();
+            assertThat(indexRs.getString("COLUMN_NAME")).isEqualTo(COL_ROLLBACKSTMTORDER);
+            assertThat(indexRs.getBoolean("IS_UNIQUE")).isEqualTo(true);
 
             var columnsRs = stmt.executeQuery("""
                             SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH

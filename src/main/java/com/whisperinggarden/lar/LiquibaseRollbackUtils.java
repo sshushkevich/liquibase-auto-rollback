@@ -69,8 +69,11 @@ public class LiquibaseRollbackUtils {
                     .addColumn(COL_ROLLBACKSTMT, varchar4KType, new NotNullConstraint(COL_ROLLBACKSTMT))
                     .addColumn(COL_ROLLBACKSTMTORDER, intType, new NotNullConstraint(COL_ROLLBACKSTMTORDER)));
 
-            executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGID", null, null, tableName, false, null,
-                    new AddColumnConfig(new Column(COL_CHANGELOG_ID))));
+            executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGIDSUMORD",
+                    database.getLiquibaseCatalogName(), database.getLiquibaseSchemaName(), tableName, true, null,
+                    new AddColumnConfig(new Column(COL_CHANGELOG_ID)),
+                    new AddColumnConfig(new Column(COL_CHANGELOG_CHECKSUM)),
+                    new AddColumnConfig(new Column(COL_ROLLBACKSTMTORDER))));
         } catch (DatabaseException e) {
             throw new UnexpectedLiquibaseException("Unable to create the rollback table", e);
         }
