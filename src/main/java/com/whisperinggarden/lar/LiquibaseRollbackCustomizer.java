@@ -20,7 +20,7 @@ public class LiquibaseRollbackCustomizer implements Customizer<Liquibase> {
         log.info("Starting database auto-rollback processing");
 
         createRollbackTable(liquibase.getDatabase(), properties.getDbRollbackTableName(),
-                properties.getRollbackStatementMaxLenght());
+                properties.getRollbackStatementMaxLength());
         rollbackUnexpectedChangeSets(liquibase, properties.getDbRollbackTableName(), properties.getDbChangeLogTable());
         persistRollbackStatements(liquibase, properties.getDbRollbackTableName());
 

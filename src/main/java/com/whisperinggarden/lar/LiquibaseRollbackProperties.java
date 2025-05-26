@@ -15,5 +15,5 @@ public class LiquibaseRollbackProperties {
 
     private String dbRollbackTableName = "DATABASECHANGELOGRB";
 
-    private int rollbackStatementMaxLenght = 4096;
+    private int rollbackStatementMaxLength = 4096;
 }
