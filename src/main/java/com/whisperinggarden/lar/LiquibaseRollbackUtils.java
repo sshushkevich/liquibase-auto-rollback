@@ -44,25 +44,25 @@ public class LiquibaseRollbackUtils {
     public static final String COL_DBCHANGELOG_ID = "ID";
     public static final String COL_DBCHANGELOG_MD5SUM = "MD5SUM";
 
-    public static void createRollbackTable(Database database, String tableName, int rollbackStmtMaxLength) {
-        if (hasTable(database, tableName)) {
+    public static void createRollbackTable(Database db, String tableName, int rollbackStmtMaxLength) {
+        if (hasTable(db, tableName)) {
             return;
         }
 
         var executor = Scope.getCurrentScope()
                 .getSingleton(ExecutorService.class)
-                .getExecutor("jdbc", database);
+                .getExecutor("jdbc", db);
 
-        var intType = DataTypeFactory.getInstance().fromDescription("int", database);
-        var varchar255Type = DataTypeFactory.getInstance().fromDescription("varchar(255)", database);
-        var varchar100Type = DataTypeFactory.getInstance().fromDescription("varchar(100)", database);
+        var intType = DataTypeFactory.getInstance().fromDescription("int", db);
+        var varchar255Type = DataTypeFactory.getInstance().fromDescription("varchar(255)", db);
+        var varchar100Type = DataTypeFactory.getInstance().fromDescription("varchar(100)", db);
         var varchar4KType = DataTypeFactory.getInstance()
-                .fromDescription("varchar(%d)".formatted(rollbackStmtMaxLength), database);
+                .fromDescription("varchar(%d)".formatted(rollbackStmtMaxLength), db);
 
         log.info("Creating {} table", tableName);
 
         try {
-            executor.execute(new CreateTableStatement(null, null, tableName)
+            executor.execute(new CreateTableStatement(db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName)
                     .addPrimaryKeyColumn(COL_ID, intType, null, null, null, new AutoIncrementConstraint(COL_ID))
                     .addColumn(COL_CHANGELOG_ID, varchar255Type, new NotNullConstraint(COL_CHANGELOG_ID))
                     .addColumn(COL_CHANGELOG_CHECKSUM, varchar100Type, new NotNullConstraint(COL_CHANGELOG_CHECKSUM))
@@ -70,12 +70,12 @@ public class LiquibaseRollbackUtils {
                     .addColumn(COL_ROLLBACKSTMTORDER, intType, new NotNullConstraint(COL_ROLLBACKSTMTORDER)));
 
             executor.execute(new CreateIndexStatement("IDX_RB_CHANGELOGIDSUMORD",
-                    database.getLiquibaseCatalogName(), database.getLiquibaseSchemaName(), tableName, true, null,
+                    db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName, true, null,
                     new AddColumnConfig(new Column(COL_CHANGELOG_ID)),
                     new AddColumnConfig(new Column(COL_CHANGELOG_CHECKSUM)),
                     new AddColumnConfig(new Column(COL_ROLLBACKSTMTORDER))));
 
-            database.commit();
+            db.commit();
         } catch (DatabaseException e) {
             throw new UnexpectedLiquibaseException("Unable to create the rollback table", e);
         }
@@ -98,7 +98,8 @@ public class LiquibaseRollbackUtils {
                             var stmtOrder = 1;
                             for (var sql : sqlGenerator.generateSql(rollbackChange, db)) {
                                 try {
-                                    logUpdatedRecords("inserted", executor.update(new InsertStatement(null, null, tableName)
+                                    logUpdatedRecords("inserted", executor.update(new InsertStatement(
+                                                    db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName)
                                             .addColumnValue(COL_CHANGELOG_ID, changeSet.getId())
                                             .addColumnValue(COL_CHANGELOG_CHECKSUM, checksum)
                                             .addColumnValue(COL_ROLLBACKSTMT, sql.toSql())

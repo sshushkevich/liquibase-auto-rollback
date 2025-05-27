@@ -27,16 +27,21 @@ public class LiquibaseRollbackUtilsTests {
     private static final String ROLLBACK_TBL = "ROLLBACK_TEST_TBL";
     private static final String CHANGELOG_TBL = "DATABASECHANGELOG";
 
+    private static final String APP_SCHEMA = "APP_SCHEMA";
+    private static final String LIQUBASE_SCHEMA = "LIQ_SCHEMA";
+
     private static Connection connection;
     private static Database database;
 
     @BeforeEach
     public void beforeEach() throws Exception {
         connection = DriverManager.getConnection("jdbc:h2:mem:testdb" + UUID.randomUUID(), "sa", "");
+        createSchema(APP_SCHEMA);
+        createSchema(LIQUBASE_SCHEMA);
         database = DatabaseFactory.getInstance()
                 .findCorrectDatabaseImplementation(new JdbcConnection(connection));
-        database.setLiquibaseCatalogName("PUBLIC");
-        database.setLiquibaseSchemaName("PUBLIC");
+        database.setDefaultSchemaName(APP_SCHEMA);
+        database.setLiquibaseSchemaName(LIQUBASE_SCHEMA);
     }
 
     @AfterEach
@@ -114,7 +119,7 @@ public class LiquibaseRollbackUtilsTests {
         LiquibaseRollbackUtils.createRollbackTable(database, ROLLBACK_TBL, 1024);
 
         try (var stmt = connection.createStatement()) {
-            var countRs = stmt.executeQuery("SELECT COUNT(*) FROM " + ROLLBACK_TBL);
+            var countRs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s".formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL));
             assertThat(countRs.next()).isTrue();
         }
     }
@@ -123,29 +128,31 @@ public class LiquibaseRollbackUtilsTests {
     public void whenUnrunChangesetExists_thenInsertRollbackRecord() throws SQLException {
         try (var stmt = connection.createStatement()) {
             stmt.executeUpdate("""
-                CREATE TABLE %s (
+                CREATE TABLE %s.%s (
                     %s INT AUTO_INCREMENT PRIMARY KEY,
                     %s VARCHAR(255) NOT NULL,
                     %s VARCHAR(100) NOT NULL,
                     %s VARCHAR(4096) NOT NULL,
                     %s INT NOT NULL
                 );
-            """.formatted(ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
+            """.formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
+                    COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
         }
 
         LiquibaseRollbackUtils.persistRollbackStatements(createLiquibase(), ROLLBACK_TBL);
 
         try (var stmt = connection.createStatement()) {
-            var rs = stmt.executeQuery("SELECT COUNT(*) FROM " + ROLLBACK_TBL);
+            var rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s".formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL));
             rs.next();
             int count = rs.getInt(1);
 
             assertThat(count).isEqualTo(1);
 
-            rs = stmt.executeQuery("SELECT %s, %s FROM %s".formatted(COL_CHANGELOG_ID, COL_ROLLBACKSTMT, ROLLBACK_TBL));
+            rs = stmt.executeQuery("SELECT %s, %s FROM %s.%s"
+                    .formatted(COL_CHANGELOG_ID, COL_ROLLBACKSTMT, LIQUBASE_SCHEMA, ROLLBACK_TBL));
             rs.next();
             assertThat(rs.getString(1)).isEqualTo("ID-01");
-            assertThat(rs.getString(2)).isEqualTo("DROP TABLE PUBLIC.person");
+            assertThat(rs.getString(2)).isEqualTo("DROP TABLE %s.person".formatted(APP_SCHEMA));
         }
     }
 
@@ -158,31 +165,32 @@ public class LiquibaseRollbackUtilsTests {
         var changeSetChecksum1 = "9:c7e301964fcdbeb3bc6509e62a018976";
         var changeSetChecksum2 = "9:76d0caf518233544632705e958b00fd4";
         var rollbackStmt1 = "DROP TABLE person";
-        var rollbackStmt21 = "ALTER TABLE person RENAME COLUMN full_name TO name";
-        var rollbackStmt22 = "DELETE FROM person WHERE name = 'John Doe'";
+        var rollbackStmt21 = "ALTER TABLE %s.person RENAME COLUMN full_name TO name".formatted(APP_SCHEMA);
+        var rollbackStmt22 = "DELETE FROM %s.person WHERE name = 'John Doe'".formatted(APP_SCHEMA);
         try (var stmt = connection.createStatement()) {
             stmt.executeUpdate("""
-                    INSERT INTO %s (ID, AUTHOR, FILENAME, DATEEXECUTED, ORDEREXECUTED, EXECTYPE, MD5SUM)
+                    INSERT INTO %s.%s (ID, AUTHOR, FILENAME, DATEEXECUTED, ORDEREXECUTED, EXECTYPE, MD5SUM)
                     VALUES ('%s', 'author', 'db/changelog/test-changelog-2.yaml', NOW(), 2, 'EXECUTED', '%s')
-                    """.formatted(CHANGELOG_TBL, changeSetId2, changeSetChecksum2));
+                    """.formatted(LIQUBASE_SCHEMA, CHANGELOG_TBL, changeSetId2, changeSetChecksum2));
             stmt.executeUpdate("""
-                    CREATE TABLE %s (
+                    CREATE TABLE %s.%s (
                         %s INT AUTO_INCREMENT PRIMARY KEY,
                         %s VARCHAR(255) NOT NULL,
                         %s VARCHAR(35) NOT NULL,
                         %s VARCHAR(4096) NOT NULL,
                         %s INT NOT NULL
                     )
-                    """.formatted(ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
+                    """.formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
                     COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
             stmt.executeUpdate("""
-                    INSERT INTO person (name)
+                    INSERT INTO %s.person (name)
                     VALUES ('Jane Doe'), ('John Doe'), ('Paul Smith')
-                    """);
-            stmt.executeUpdate("ALTER TABLE person RENAME COLUMN name TO full_name");
+                    """.formatted(APP_SCHEMA));
+            stmt.executeUpdate("ALTER TABLE %s.person RENAME COLUMN name TO full_name".formatted(APP_SCHEMA));
         }
-        try (var stmt = connection.prepareStatement("INSERT INTO %s (%s, %s, %s, %s) VALUES (?, ?, ?, ?)"
-                .formatted(ROLLBACK_TBL, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
+        try (var stmt = connection.prepareStatement("INSERT INTO %s.%s (%s, %s, %s, %s) VALUES (?, ?, ?, ?)"
+                .formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
+                        COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
             stmt.setString(1, changeSetId1);
             stmt.setString(2, changeSetChecksum1);
             stmt.setString(3, rollbackStmt1);
@@ -208,33 +216,33 @@ public class LiquibaseRollbackUtilsTests {
         LiquibaseRollbackUtils.rollbackUnexpectedChangeSets(liquibase, ROLLBACK_TBL, CHANGELOG_TBL);
 
         try (var stmt = connection.createStatement()) {
-            var rs = stmt.executeQuery("SELECT COUNT(*) FROM person");
+            var rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.person".formatted(APP_SCHEMA));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(2);
 
-            rs = stmt.executeQuery("SELECT name FROM person ORDER BY name");
+            rs = stmt.executeQuery("SELECT name FROM %s.person ORDER BY name".formatted(APP_SCHEMA));
             rs.next();
             assertThat(rs.getString(1)).isEqualTo("Jane Doe");
             rs.next();
             assertThat(rs.getString(1)).isEqualTo("Paul Smith");
 
-            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE %s = '%s'"
-                    .formatted(ROLLBACK_TBL, COL_CHANGELOG_ID, changeSetId1));
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s WHERE %s = '%s'"
+                    .formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_CHANGELOG_ID, changeSetId1));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(1);
 
-            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE %s = '%s'"
-                    .formatted(ROLLBACK_TBL, COL_CHANGELOG_ID, changeSetId2));
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s WHERE %s = '%s'"
+                    .formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_CHANGELOG_ID, changeSetId2));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(0);
 
-            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE ID = '%s'"
-                    .formatted(CHANGELOG_TBL, changeSetId1));
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s WHERE ID = '%s'"
+                    .formatted(LIQUBASE_SCHEMA, CHANGELOG_TBL, changeSetId1));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(1);
 
-            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s WHERE ID = '%s'"
-                    .formatted(CHANGELOG_TBL, changeSetId2));
+            rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s WHERE ID = '%s'"
+                    .formatted(LIQUBASE_SCHEMA, CHANGELOG_TBL, changeSetId2));
             rs.next();
             assertThat(rs.getInt(1)).isEqualTo(0);
 
@@ -256,5 +264,11 @@ public class LiquibaseRollbackUtilsTests {
                 new ClassLoaderResourceAccessor(),
                 database
         );
+    }
+
+    private void createSchema(String schemaName) throws SQLException {
+        try (var stmt = connection.createStatement()) {
+            stmt.execute("CREATE SCHEMA IF NOT EXISTS %s".formatted(schemaName));
+        }
     }
 }
