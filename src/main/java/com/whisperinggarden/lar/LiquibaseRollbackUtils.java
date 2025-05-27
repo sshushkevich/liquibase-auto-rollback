@@ -74,12 +74,15 @@ public class LiquibaseRollbackUtils {
                     new AddColumnConfig(new Column(COL_CHANGELOG_ID)),
                     new AddColumnConfig(new Column(COL_CHANGELOG_CHECKSUM)),
                     new AddColumnConfig(new Column(COL_ROLLBACKSTMTORDER))));
+
+            database.commit();
         } catch (DatabaseException e) {
             throw new UnexpectedLiquibaseException("Unable to create the rollback table", e);
         }
     }
 
     public static void persistRollbackStatements(Liquibase liquibase, String tableName) {
+        var db = liquibase.getDatabase();
         var sqlGenerator = SqlGeneratorFactory.getInstance();
         var executor = Scope.getCurrentScope()
                 .getSingleton(ExecutorService.class)
@@ -93,21 +96,21 @@ public class LiquibaseRollbackUtils {
                         var checksum = changeSet.generateCheckSum(ChecksumVersion.latest()).toString();
                         changeSet.getRollback().getChanges().forEach(rollbackChange -> {
                             var stmtOrder = 1;
-                            for (var sql : sqlGenerator.generateSql(rollbackChange, liquibase.getDatabase())) {
+                            for (var sql : sqlGenerator.generateSql(rollbackChange, db)) {
                                 try {
-                                    executor.execute(new InsertStatement(null, null, tableName)
+                                    logUpdatedRecords("inserted", executor.update(new InsertStatement(null, null, tableName)
                                             .addColumnValue(COL_CHANGELOG_ID, changeSet.getId())
                                             .addColumnValue(COL_CHANGELOG_CHECKSUM, checksum)
                                             .addColumnValue(COL_ROLLBACKSTMT, sql.toSql())
-                                            .addColumnValue(COL_ROLLBACKSTMTORDER, stmtOrder++));
+                                            .addColumnValue(COL_ROLLBACKSTMTORDER, stmtOrder++)));
                                 } catch (DatabaseException e) {
                                     throw new UnexpectedLiquibaseException(
                                             "Unable to insert rollback record - " + e.getMessage(), e);
                                 }
-
                             }
                         });
                     });
+            db.commit();
         } catch (LiquibaseException e) {
             throw new UnexpectedLiquibaseException("Unable to persist rollback statements - " + e.getMessage(), e);
         }
@@ -130,12 +133,13 @@ public class LiquibaseRollbackUtils {
                         }
 
                         try {
-                            var rows = executor.queryForList(new SelectStatement(db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName)
-                                            .addColumnsToSelect(COL_ROLLBACKSTMT)
-                                            .setWhere(":name = :value AND :name = :value")
-                                            .addWhereColumnNames(COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM)
-                                            .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString())
-                                            .setOrderBy(COL_ROLLBACKSTMTORDER));
+                            var rows = executor.queryForList(new SelectStatement(db.getLiquibaseCatalogName(),
+                                            db.getLiquibaseSchemaName(), tableName)
+                                    .addColumnsToSelect(COL_ROLLBACKSTMT)
+                                    .setWhere(":name = :value AND :name = :value")
+                                    .addWhereColumnNames(COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM)
+                                    .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString())
+                                    .setOrderBy(COL_ROLLBACKSTMTORDER));
                             if (!rows.isEmpty()) {
                                 rows.forEach(row -> {
                                     log.info("Executing rollback statement for {}", changeSet.getId());
@@ -148,26 +152,28 @@ public class LiquibaseRollbackUtils {
                                 });
 
                                 log.info("Deleting changeset {} record from changelog table", changeSet.getId());
-                                executor.execute(new DeleteStatement(db.getLiquibaseCatalogName(),
-                                                db.getLiquibaseSchemaName(), changeLogTableName)
+                                logUpdatedRecords("deleted", executor.update(new DeleteStatement(
+                                                db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), changeLogTableName)
                                         .setWhere(":name = :value AND :name = :value")
                                         .addWhereColumnName(COL_DBCHANGELOG_ID)
                                         .addWhereColumnName(COL_DBCHANGELOG_MD5SUM)
-                                        .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString()));
+                                        .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString())));
 
                                 log.info("Deleting rolled back statements for the changeset {}", changeSet.getId());
-                                executor.execute(new DeleteStatement(db.getLiquibaseCatalogName(),
-                                                db.getLiquibaseSchemaName(), tableName)
+                                logUpdatedRecords("deleted", executor.update(new DeleteStatement(
+                                                db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName)
                                         .setWhere(":name = :value AND :name = :value")
                                         .addWhereColumnName(COL_CHANGELOG_ID)
                                         .addWhereColumnName(COL_CHANGELOG_CHECKSUM)
-                                        .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString()));
+                                        .addWhereParameters(changeSet.getId(), changeSet.getLastCheckSum().toString())));
+
+                                db.commit();
                             } else {
                                 log.info("There is no rollback statement for changeset {} ({})",
                                         changeSet.getId(), changeSet.getLastCheckSum().toString());
                             }
                         } catch (DatabaseException e) {
-                            throw new RuntimeException(e);
+                            throw new UnexpectedLiquibaseException("Unable to rollback changesets - " + e.getMessage(), e);
                         }
                     });
         } catch (LiquibaseException e) {
@@ -184,5 +190,9 @@ public class LiquibaseRollbackUtils {
         } catch (InvalidExampleException | DatabaseException e) {
             throw new UnexpectedLiquibaseException("Unable to verify whether the rollback table exists", e);
         }
+    }
+
+    private static void logUpdatedRecords(String action, int count) {
+        log.info("{} {} {}", count, (count == 1 ? "record" : "records"), action);
     }
 }
