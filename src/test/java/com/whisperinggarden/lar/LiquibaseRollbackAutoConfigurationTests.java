@@ -18,24 +18,24 @@ public class LiquibaseRollbackAutoConfigurationTests {
 
     @Test
     void whenPropertyIsMissing_thenCustomizerBeanShouldBeCreated() {
-        contextRunner.run(context -> {
-            assertThat(context).hasSingleBean(LiquibaseRollbackCustomizer.class);
-        });
+        contextRunner.run(context ->
+            assertThat(context).hasSingleBean(LiquibaseRollbackCustomizer.class)
+        );
     }
 
     @Test
     void whenPropertyIsEnabled_thenCustomizerBeanShouldBeCreated() {
         contextRunner.withPropertyValues("spring.liquibase-rollback.enabled=true")
-                .run(context -> {
-                    assertThat(context).hasSingleBean(LiquibaseRollbackCustomizer.class);
-                });
+                .run(context ->
+                    assertThat(context).hasSingleBean(LiquibaseRollbackCustomizer.class)
+                );
     }
 
     @Test
     void whenPropertyIsDisabled_thenCustomizerBeanShouldNotBeCreated() {
         contextRunner.withPropertyValues("spring.liquibase-rollback.enabled=false")
-                .run(context -> {
-                    assertThat(context).doesNotHaveBean(LiquibaseRollbackCustomizer.class);
-                });
+                .run(context ->
+                    assertThat(context).doesNotHaveBean(LiquibaseRollbackCustomizer.class)
+                );
     }
 }
