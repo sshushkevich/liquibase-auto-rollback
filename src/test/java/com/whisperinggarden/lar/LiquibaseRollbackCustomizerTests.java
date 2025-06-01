@@ -67,6 +67,74 @@ public class LiquibaseRollbackCustomizerTests {
     }
 
     @Test
+    public void whenCustomizeIsCalled_ThenRollbackTableIsCreatedAndStmtInserted() throws SQLException {
+        customizer.customize(createLiquibase());
+
+        try (var stmt = connection.createStatement()) {
+            var tableRs = stmt.executeQuery("SELECT * FROM INFORMATION_SCHEMA.TABLES " +
+                    "WHERE TABLE_NAME = '%s'".formatted(ROLLBACK_TBL));
+            assertThat(tableRs.next()).isTrue();
+
+            var rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s".formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL));
+            rs.next();
+            assertThat(rs.getInt(1)).isEqualTo(1);
+        }
+    }
+
+    @Test
+    public void whenCustomizeIsCalled_thenRollbackStatementsAreExecuted() throws SQLException, LiquibaseException {
+        var liquibase = createLiquibase();
+        liquibase.update();
+        var changeSetId2 = "ID-02";
+        var changeSetChecksum2 = "9:76d0caf518233544632705e958b00fd4";
+        var rollbackStmt2 = "DROP TABLE %s.book".formatted(APP_SCHEMA);
+        try (var stmt = connection.createStatement()) {
+            stmt.executeUpdate("""
+                CREATE TABLE %s.%s (
+                    ID INT AUTO_INCREMENT PRIMARY KEY
+                );
+            """.formatted(APP_SCHEMA, "book"));
+            stmt.executeUpdate("""
+                    INSERT INTO %s.%s (ID, AUTHOR, FILENAME, DATEEXECUTED, ORDEREXECUTED, EXECTYPE, MD5SUM)
+                    VALUES ('%s', 'author', 'db/changelog/test-changelog-2.yaml', NOW(), 2, 'EXECUTED', '%s')
+                    """.formatted(LIQUBASE_SCHEMA, CHANGELOG_TBL, changeSetId2, changeSetChecksum2));
+            stmt.executeUpdate("""
+                    CREATE TABLE %s.%s (
+                        %s INT AUTO_INCREMENT PRIMARY KEY,
+                        %s VARCHAR(255) NOT NULL,
+                        %s VARCHAR(35) NOT NULL,
+                        %s VARCHAR(4096) NOT NULL,
+                        %s INT NOT NULL
+                    )
+                    """.formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
+                    COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
+        }
+        try (var stmt = connection.prepareStatement("INSERT INTO %s.%s (%s, %s, %s, %s) VALUES (?, ?, ?, ?)"
+                .formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
+                        COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
+            stmt.setString(1, changeSetId2);
+            stmt.setString(2, changeSetChecksum2);
+            stmt.setString(3, rollbackStmt2);
+            stmt.setInt(4, 1);
+            stmt.executeUpdate();
+        }
+        connection.commit();
+
+        customizer.customize(liquibase);
+
+        try (var stmt = connection.createStatement()) {
+            var tableRs = stmt.executeQuery("SELECT * FROM INFORMATION_SCHEMA.TABLES " +
+                    "WHERE TABLE_NAME = 'book'");
+            assertThat(tableRs.next()).isFalse();
+
+            var rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s WHERE %s = '%s'"
+                    .formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_CHANGELOG_ID, changeSetId2));
+            rs.next();
+            assertThat(rs.getInt(1)).isEqualTo(0);
+        }
+    }
+
+    @Test
     public void whenTableDoesNotExist_thenRollbackTableAndIndexAreCreated() throws Exception {
         customizer.createRollbackTable(database);
 
