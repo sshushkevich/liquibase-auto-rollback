@@ -11,15 +11,18 @@ import liquibase.LabelExpression;
 import liquibase.Liquibase;
 import liquibase.Scope;
 import liquibase.change.AddColumnConfig;
+import liquibase.change.core.RawSQLChange;
 import liquibase.changelog.RanChangeSet;
 import liquibase.database.Database;
 import liquibase.datatype.DataTypeFactory;
 import liquibase.exception.DatabaseException;
 import liquibase.exception.LiquibaseException;
+import liquibase.exception.RollbackImpossibleException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.executor.Executor;
 import liquibase.executor.ExecutorService;
 import liquibase.integration.spring.Customizer;
+import liquibase.sql.Sql;
 import liquibase.sqlgenerator.SqlGeneratorFactory;
 import liquibase.statement.AutoIncrementConstraint;
 import liquibase.statement.NotNullConstraint;
@@ -32,9 +35,14 @@ import liquibase.structure.core.Column;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.stream.Stream;
 
 import static com.whisperinggarden.lar.LiquibaseRollbackUtils.hasTable;
+import static java.util.function.Predicate.not;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -168,30 +176,36 @@ public class LiquibaseRollbackCustomizer implements Customizer<Liquibase> {
         var tableName = properties.getDbRollbackTableName();
         var db = liquibase.getDatabase();
         var sqlGenerator = SqlGeneratorFactory.getInstance();
-        var executor = getExecutor(db);
 
         try {
             liquibase.listUnrunChangeSets(new Contexts(), new LabelExpression())
                     .forEach(changeSet -> {
                         log.info("Processing unrun changeset {}", changeSet.getId());
-
                         var checksum = changeSet.generateCheckSum(ChecksumVersion.latest()).toString();
-                        changeSet.getRollback().getChanges().forEach(rollbackChange -> {
-                            var stmtOrder = 1;
-                            for (var sql : sqlGenerator.generateSql(rollbackChange, db)) {
-                                try {
-                                    logUpdatedRecords("inserted", executor.update(new InsertStatement(
-                                            db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName)
-                                            .addColumnValue(COL_CHANGELOG_ID, changeSet.getId())
-                                            .addColumnValue(COL_CHANGELOG_CHECKSUM, checksum)
-                                            .addColumnValue(COL_ROLLBACKSTMT, sql.toSql())
-                                            .addColumnValue(COL_ROLLBACKSTMTORDER, stmtOrder++)));
-                                } catch (DatabaseException e) {
-                                    throw new UnexpectedLiquibaseException(
-                                            "Unable to insert rollback record - " + e.getMessage(), e);
-                                }
-                            }
-                        });
+
+                        if (changeSet.hasCustomRollbackChanges()) {
+                            changeSet.getRollback().getChanges().forEach(rollbackChange ->
+                                insertRollbackStatements(db, tableName, changeSet.getId(), checksum,
+                                        sqlGenerator.generateSql(rollbackChange, db)));
+                        } else if (!changeSet.getFilePath().toLowerCase().endsWith(".sql")) {
+                            var changes = new ArrayList<>(changeSet.getChanges());
+                            Collections.reverse(changes);
+                            var sqlList = changes.stream()
+                                    .filter(not(RawSQLChange.class::isInstance))
+                                    .flatMap(change -> {
+                                        try {
+                                            return Arrays.stream(sqlGenerator.generateSql(
+                                                    change.generateRollbackStatements(db), db));
+                                        } catch (RollbackImpossibleException e) {
+                                            log.warn("Unable to generate a rollback statement for the changeset {}",
+                                                    changeSet.getId());
+                                            return Stream.empty();
+                                        }
+                                    })
+                                    .toList();
+                            insertRollbackStatements(db, tableName, changeSet.getId(), checksum,
+                                    sqlList.toArray(Sql[]::new));
+                        }
                     });
             db.commit();
         } catch (LiquibaseException e) {
@@ -203,7 +217,27 @@ public class LiquibaseRollbackCustomizer implements Customizer<Liquibase> {
         return Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", db);
     }
 
-    private static void logUpdatedRecords(String action, int count) {
+    private void logUpdatedRecords(String action, int count) {
         log.info("{} {} {}", count, (count == 1 ? "record" : "records"), action);
+    }
+
+    private void insertRollbackStatements(Database db, String tableName,
+            String changeSetId, String changeSetCheckSum, Sql[] statements) {
+
+        var executor = getExecutor(db);
+        var stmtOrder = 1;
+        for (var sql : statements) {
+            try {
+                logUpdatedRecords("inserted", executor.update(new InsertStatement(
+                        db.getLiquibaseCatalogName(), db.getLiquibaseSchemaName(), tableName)
+                        .addColumnValue(COL_CHANGELOG_ID, changeSetId)
+                        .addColumnValue(COL_CHANGELOG_CHECKSUM, changeSetCheckSum)
+                        .addColumnValue(COL_ROLLBACKSTMT, sql.toSql())
+                        .addColumnValue(COL_ROLLBACKSTMTORDER, stmtOrder++)));
+            } catch (DatabaseException e) {
+                throw new UnexpectedLiquibaseException(
+                        "Unable to insert a rollback record - " + e.getMessage(), e);
+            }
+        }
     }
 }

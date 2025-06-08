@@ -1,0 +1,35 @@
+databaseChangeLog:
+  - changeSet:
+      id: ID-01
+      author: sshushkevich
+      changes:
+        - createTable:
+            tableName: book
+            columns:
+              - column:
+                  name: id
+                  type: int
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: title
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+  - changeSet:
+      id: ID-02
+      author: sshushkevich
+      changes:
+        - addColumn:
+            tableName: book
+            columns:
+              - column:
+                  name: author_name
+                  type: varchar(100)
+        - renameColumn:
+            tableName: book
+            oldColumnName: author_name
+            newColumnName: author_full_name
+            columnDataType: varchar(100)

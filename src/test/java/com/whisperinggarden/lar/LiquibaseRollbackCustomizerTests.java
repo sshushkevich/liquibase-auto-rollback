@@ -98,17 +98,8 @@ public class LiquibaseRollbackCustomizerTests {
                     INSERT INTO %s.%s (ID, AUTHOR, FILENAME, DATEEXECUTED, ORDEREXECUTED, EXECTYPE, MD5SUM)
                     VALUES ('%s', 'author', 'db/changelog/test-changelog-2.yaml', NOW(), 2, 'EXECUTED', '%s')
                     """.formatted(LIQUBASE_SCHEMA, CHANGELOG_TBL, changeSetId2, changeSetChecksum2));
-            stmt.executeUpdate("""
-                    CREATE TABLE %s.%s (
-                        %s INT AUTO_INCREMENT PRIMARY KEY,
-                        %s VARCHAR(255) NOT NULL,
-                        %s VARCHAR(35) NOT NULL,
-                        %s VARCHAR(4096) NOT NULL,
-                        %s INT NOT NULL
-                    )
-                    """.formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
-                    COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
         }
+        createRollbackTableForTest();
         try (var stmt = connection.prepareStatement("INSERT INTO %s.%s (%s, %s, %s, %s) VALUES (?, ?, ?, ?)"
                 .formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
                         COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
@@ -211,18 +202,7 @@ public class LiquibaseRollbackCustomizerTests {
 
     @Test
     public void whenUnrunChangesetExists_thenInsertRollbackRecord() throws SQLException {
-        try (var stmt = connection.createStatement()) {
-            stmt.executeUpdate("""
-                CREATE TABLE %s.%s (
-                    %s INT AUTO_INCREMENT PRIMARY KEY,
-                    %s VARCHAR(255) NOT NULL,
-                    %s VARCHAR(100) NOT NULL,
-                    %s VARCHAR(4096) NOT NULL,
-                    %s INT NOT NULL
-                );
-            """.formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
-                    COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
-        }
+        createRollbackTableForTest();
 
         customizer.persistRollbackStatements(createLiquibase());
 
@@ -238,6 +218,39 @@ public class LiquibaseRollbackCustomizerTests {
             rs.next();
             assertThat(rs.getString(1)).isEqualTo("ID-01");
             assertThat(rs.getString(2)).isEqualTo("DROP TABLE %s.person".formatted(APP_SCHEMA));
+        }
+    }
+
+    @Test
+    public void whenUnrunChangesetWithNoRollbackExists_thenGenerateAndInsertRollbackRecord() throws SQLException {
+        createRollbackTableForTest();
+
+        customizer.persistRollbackStatements(createLiquibase("db/changelog/test-changelog-norollback.yaml"));
+
+        try (var stmt = connection.createStatement()) {
+            var rs = stmt.executeQuery("SELECT COUNT(*) FROM %s.%s".formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL));
+
+            rs.next();
+            assertThat(rs.getInt(1)).isEqualTo(3);
+
+            rs = stmt.executeQuery("SELECT %s, %s, %s FROM %s.%s"
+                    .formatted(COL_CHANGELOG_ID, COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER, LIQUBASE_SCHEMA, ROLLBACK_TBL));
+
+            rs.next();
+            assertThat(rs.getString(1)).isEqualTo("ID-01");
+            assertThat(rs.getString(2)).isEqualTo("DROP TABLE %s.book".formatted(APP_SCHEMA));
+            assertThat(rs.getInt(3)).isEqualTo(1);
+
+            rs.next();
+            assertThat(rs.getString(1)).isEqualTo("ID-02");
+            assertThat(rs.getString(2)).isEqualTo("ALTER TABLE %s.book ALTER COLUMN author_full_name RENAME TO author_name"
+                    .formatted(APP_SCHEMA));
+            assertThat(rs.getInt(3)).isEqualTo(1);
+
+            rs.next();
+            assertThat(rs.getString(1)).isEqualTo("ID-02");
+            assertThat(rs.getString(2)).isEqualTo("ALTER TABLE %s.book DROP COLUMN author_name".formatted(APP_SCHEMA));
+            assertThat(rs.getInt(3)).isEqualTo(2);
         }
     }
 
@@ -258,21 +271,12 @@ public class LiquibaseRollbackCustomizerTests {
                     VALUES ('%s', 'author', 'db/changelog/test-changelog-2.yaml', NOW(), 2, 'EXECUTED', '%s')
                     """.formatted(LIQUBASE_SCHEMA, CHANGELOG_TBL, changeSetId2, changeSetChecksum2));
             stmt.executeUpdate("""
-                    CREATE TABLE %s.%s (
-                        %s INT AUTO_INCREMENT PRIMARY KEY,
-                        %s VARCHAR(255) NOT NULL,
-                        %s VARCHAR(35) NOT NULL,
-                        %s VARCHAR(4096) NOT NULL,
-                        %s INT NOT NULL
-                    )
-                    """.formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
-                    COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
-            stmt.executeUpdate("""
                     INSERT INTO %s.person (name)
                     VALUES ('Jane Doe'), ('John Doe'), ('Paul Smith')
                     """.formatted(APP_SCHEMA));
             stmt.executeUpdate("ALTER TABLE %s.person RENAME COLUMN name TO full_name".formatted(APP_SCHEMA));
         }
+        createRollbackTableForTest();
         try (var stmt = connection.prepareStatement("INSERT INTO %s.%s (%s, %s, %s, %s) VALUES (?, ?, ?, ?)"
                 .formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
                         COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER))) {
@@ -344,8 +348,12 @@ public class LiquibaseRollbackCustomizerTests {
     }
 
     private Liquibase createLiquibase() {
+        return createLiquibase("db/changelog/test-changelog.yaml");
+    }
+
+    private Liquibase createLiquibase(String changeLogFile) {
         return new Liquibase(
-                "db/changelog/test-changelog.yaml",
+                changeLogFile,
                 new ClassLoaderResourceAccessor(),
                 database
         );
@@ -354,6 +362,21 @@ public class LiquibaseRollbackCustomizerTests {
     private void createSchema(String schemaName) throws SQLException {
         try (var stmt = connection.createStatement()) {
             stmt.execute("CREATE SCHEMA IF NOT EXISTS %s".formatted(schemaName));
+        }
+    }
+
+    private void createRollbackTableForTest() throws SQLException {
+        try (var stmt = connection.createStatement()) {
+            stmt.executeUpdate("""
+                CREATE TABLE %s.%s (
+                    %s INT AUTO_INCREMENT PRIMARY KEY,
+                    %s VARCHAR(255) NOT NULL,
+                    %s VARCHAR(100) NOT NULL,
+                    %s VARCHAR(4096) NOT NULL,
+                    %s INT NOT NULL
+                );
+            """.formatted(LIQUBASE_SCHEMA, ROLLBACK_TBL, COL_ID, COL_CHANGELOG_ID, COL_CHANGELOG_CHECKSUM,
+                    COL_ROLLBACKSTMT, COL_ROLLBACKSTMTORDER));
         }
     }
 }
