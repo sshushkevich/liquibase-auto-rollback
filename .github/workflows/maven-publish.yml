@@ -25,8 +25,16 @@ jobs:
         server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
         settings-path: ${{ github.workspace }} # location for the settings.xml file
 
+    - name: Import GPG key
+      run: |
+        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+        gpg --list-secret-keys
+      env:
+        GPG_TTY: ${{ env.GPG_TTY }}
+
     - name: Publish to Maven Central
-      run: mvn -B clean deploy -s .github/maven-settings.xml
+      run: mvn -B clean verify central-publishing:publish -s .github/maven-settings.xml
       env:
         CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
         CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

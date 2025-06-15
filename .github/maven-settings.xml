@@ -6,4 +6,16 @@
             <password>${env.CENTRAL_TOKEN}</password>
         </server>
     </servers>
+    <profiles>
+        <profile>
+            <id>gpg</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <gpg.keyname>B871D61E50B2661F5B3F4CE2005BA026D704E013</gpg.keyname>
+                <gpg.passphrase>${env.GPG_PASSPHRASE}</gpg.passphrase>
+            </properties>
+        </profile>
+    </profiles>
 </settings>
