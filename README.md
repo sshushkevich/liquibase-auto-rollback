@@ -40,9 +40,9 @@ Add the dependency to your `pom.xml`:
 ## Use Case Example
 
 1. A developer deploys a **feature branch** with new Liquibase changes to a **staging environment**.
-2. The helper library generates and stores rollback statements for those changesets in the staging DB.
+2. During application startup, the helper library **generates and stores rollback statements** for any newly applied changesets in the staging DB.
 3. Later, the developer switches to the **`develop`** branch (which doesn’t include those changesets).
-4. The library detects the missing changesets and **executes the saved rollbacks**, restoring the database to the correct state.
+4. On application startup, the library **detects the missing changesets** and automatically **executes the saved rollbacks**, restoring the database to the correct state.
 
 ## Configuration Properties
 
